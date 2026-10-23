@@ -81,6 +81,7 @@
   let user = null;
   let readyForSync = false;
   let syncTimer = null;
+  let refreshInFlight = false;
 
   function setStatus(message, state = '') {
     statusElement.textContent = message;
@@ -247,16 +248,18 @@
           const backupKey = `${BACKUP_PREFIX}${new Date().toISOString()}`;
           localStorage.setItem(backupKey, JSON.stringify(local));
         }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-        const { error: saveError } = await client.from(TABLE).upsert({ user_id: user.id, state: merged }, { onConflict: 'user_id' });
-        if (saveError) {
-          setStatus(explainError(saveError), 'error');
-          return;
+        if (!window.applyCheckinSnapshot?.(merged)) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
         }
-        window.location.reload();
-        return;
+        if (mergedJson !== stableJson(cloudRow.state)) {
+          const { error: saveError } = await client.from(TABLE).upsert({ user_id: user.id, state: merged }, { onConflict: 'user_id' });
+          if (saveError) {
+            setStatus(explainError(saveError), 'error');
+            return;
+          }
+        }
       }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      if (localJson === mergedJson) localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
     } else {
       const initialState = local || { tasks: [] };
       if (!validSnapshot(initialState)) {
@@ -278,39 +281,46 @@
   }
 
   async function refreshCloudSnapshot() {
-    if (!user || !readyForSync || !navigator.onLine) return;
-    const { data: cloudRow, error } = await client.from(TABLE)
-      .select('state')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    if (error) {
-      setStatus(explainError(error), 'error');
-      return;
-    }
-    if (!cloudRow || !validSnapshot(cloudRow.state)) {
-      await writeCloudSnapshot(window.getCheckinSnapshot?.());
-      return;
-    }
-    const local = window.getCheckinSnapshot?.();
-    const merged = mergeSnapshots(local || { tasks: [] }, cloudRow.state);
-    const mergedJson = stableJson(merged);
-    if (mergedJson !== stableJson(local)) {
-      if (local) localStorage.setItem(`${BACKUP_PREFIX}${new Date().toISOString()}`, JSON.stringify(local));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-      if (mergedJson !== stableJson(cloudRow.state)) {
-        const { error: saveError } = await client.from(TABLE).upsert({ user_id: user.id, state: merged }, { onConflict: 'user_id' });
-        if (saveError) {
-          setStatus(explainError(saveError), 'error');
-          return;
-        }
+    if (!user || !readyForSync || !navigator.onLine || refreshInFlight) return;
+    refreshInFlight = true;
+    try {
+      const { data: cloudRow, error } = await client.from(TABLE)
+        .select('state')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (error) {
+        setStatus(explainError(error), 'error');
+        return;
       }
-      window.location.reload();
-      return;
-    }
-    if (mergedJson !== stableJson(cloudRow.state)) {
-      await writeCloudSnapshot(merged);
-    } else {
-      setStatus(`已同步到云端 · ${user.email || '已登录'}`, 'success');
+      if (!cloudRow || !validSnapshot(cloudRow.state)) {
+        await writeCloudSnapshot(window.getCheckinSnapshot?.());
+        return;
+      }
+      const local = window.getCheckinSnapshot?.();
+      const merged = mergeSnapshots(local || { tasks: [] }, cloudRow.state);
+      const mergedJson = stableJson(merged);
+      if (mergedJson !== stableJson(local)) {
+        if (local) localStorage.setItem(`${BACKUP_PREFIX}${new Date().toISOString()}`, JSON.stringify(local));
+        if (!window.applyCheckinSnapshot?.(merged)) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+        }
+        if (mergedJson !== stableJson(cloudRow.state)) {
+          const { error: saveError } = await client.from(TABLE).upsert({ user_id: user.id, state: merged }, { onConflict: 'user_id' });
+          if (saveError) {
+            setStatus(explainError(saveError), 'error');
+            return;
+          }
+        }
+        setStatus(`已同步到云端 · ${user.email || '已登录'}`, 'success');
+        return;
+      }
+      if (mergedJson !== stableJson(cloudRow.state)) {
+        await writeCloudSnapshot(merged);
+      } else {
+        setStatus(`已同步到云端 · ${user.email || '已登录'}`, 'success');
+      }
+    } finally {
+      refreshInFlight = false;
     }
   }
 

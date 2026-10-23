@@ -178,6 +178,26 @@ function saveState() {
 
 window.getCheckinSnapshot = () => JSON.parse(JSON.stringify(state));
 
+window.applyCheckinSnapshot = (snapshot) => {
+  if (!snapshot || !Array.isArray(snapshot.tasks)) return false;
+  const deletedTaskIds = normalizeDeletedTaskIds(snapshot.deletedTaskIds);
+  const deletedIds = new Set(deletedTaskIds);
+  const tasks = snapshot.tasks.map(normalizeTask).filter((task) => task && !deletedIds.has(task.id));
+  if (!tasks.length) return false;
+
+  const previousActiveId = state.activeId;
+  state = {
+    tasks,
+    activeId: tasks.some((task) => task.id === snapshot.activeId) ? snapshot.activeId : tasks[0].id,
+    deletedTaskIds,
+  };
+  if (state.activeId !== previousActiveId) selectedDate = currentTaskDateKey(activeTask(), new Date());
+  visibleMonth = monthDateFromKey(selectedDate);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  render();
+  return true;
+};
+
 function activeTask() {
   return state.tasks.find((task) => task.id === state.activeId) || state.tasks[0];
 }
