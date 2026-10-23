@@ -78,6 +78,10 @@ function makeId() {
   return globalThis.crypto?.randomUUID?.() || `task-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function normalizeDeletedTaskIds(value) {
+  return Array.isArray(value) ? [...new Set(value.filter((id) => typeof id === 'string' && id))] : [];
+}
+
 function isValidTime(value) {
   return typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
@@ -118,11 +122,14 @@ function readState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     if (saved && Array.isArray(saved.tasks)) {
-      const tasks = saved.tasks.map(normalizeTask).filter(Boolean);
+      const deletedTaskIds = normalizeDeletedTaskIds(saved.deletedTaskIds);
+      const deletedIds = new Set(deletedTaskIds);
+      const tasks = saved.tasks.map(normalizeTask).filter((task) => task && !deletedIds.has(task.id));
       if (tasks.length) {
         return {
           tasks,
           activeId: tasks.some((task) => task.id === saved.activeId) ? saved.activeId : tasks[0].id,
+          deletedTaskIds,
         };
       }
     }
@@ -135,11 +142,14 @@ function readState() {
       const legacy = JSON.parse(localStorage.getItem(key) || 'null');
       if (!legacy) continue;
       if (Array.isArray(legacy.tasks)) {
-        const tasks = legacy.tasks.map(normalizeTask).filter(Boolean);
+        const deletedTaskIds = normalizeDeletedTaskIds(legacy.deletedTaskIds);
+        const deletedIds = new Set(deletedTaskIds);
+        const tasks = legacy.tasks.map(normalizeTask).filter((task) => task && !deletedIds.has(task.id));
         if (tasks.length) {
           return {
             tasks,
             activeId: tasks.some((task) => task.id === legacy.activeId) ? legacy.activeId : tasks[0].id,
+            deletedTaskIds,
           };
         }
       }
@@ -150,14 +160,14 @@ function readState() {
         endTime: DEFAULT_END,
         days: legacy.days,
       });
-      return { tasks: [migrated], activeId: migrated.id };
+      return { tasks: [migrated], activeId: migrated.id, deletedTaskIds: [] };
     } catch {
       // Try the next legacy storage key.
     }
   }
 
   const task = createTask(DEFAULT_PLAN);
-  return { tasks: [task], activeId: task.id };
+  return { tasks: [task], activeId: task.id, deletedTaskIds: [] };
 }
 
 function saveState() {
@@ -481,7 +491,7 @@ elements.deleteTask.addEventListener('click', () => {
   if (state.tasks.length <= 1) return;
   pendingDeleteId = state.activeId;
   const task = activeTask();
-  elements.deleteTaskDetail.textContent = `“${task.title}”及其所有打卡记录都会从这台设备删除，无法恢复。`;
+  elements.deleteTaskDetail.textContent = `“${task.title}”及其所有打卡记录会从本机删除；登录并同步后，也会从其他已同步设备移除。无法恢复。`;
   elements.editDialog.close();
   elements.deleteTaskDialog.showModal();
 });
@@ -501,6 +511,8 @@ elements.confirmDeleteTask.addEventListener('click', () => {
     return;
   }
 
+  state.deletedTaskIds = normalizeDeletedTaskIds(state.deletedTaskIds);
+  if (!state.deletedTaskIds.includes(pendingDeleteId)) state.deletedTaskIds.push(pendingDeleteId);
   state.tasks.splice(deletedIndex, 1);
   if (state.activeId === pendingDeleteId) {
     const nextTask = state.tasks[Math.min(deletedIndex, state.tasks.length - 1)];

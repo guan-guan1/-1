@@ -1,4 +1,4 @@
-const CACHE_NAME = 'evening-agreement-v8';
+const CACHE_NAME = 'evening-agreement-v9';
 const APP_FILES = ['./', './index.html', './styles.css', './app.js', './cloud-sync.js', './supabase-config.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
 
 self.addEventListener('install', (event) => {

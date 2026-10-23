@@ -142,7 +142,15 @@
   function mergeSnapshots(local, remote) {
     const merged = JSON.parse(JSON.stringify(remote));
     if (!Array.isArray(merged.tasks)) merged.tasks = [];
+    const deletedTaskIds = [...new Set([
+      ...(Array.isArray(remote.deletedTaskIds) ? remote.deletedTaskIds : []),
+      ...(Array.isArray(local.deletedTaskIds) ? local.deletedTaskIds : []),
+    ].filter((id) => typeof id === 'string' && id))];
+    const deletedIds = new Set(deletedTaskIds);
+    merged.deletedTaskIds = deletedTaskIds;
+    merged.tasks = merged.tasks.filter((task) => !deletedIds.has(task.id));
     for (const localTask of local.tasks || []) {
+      if (deletedIds.has(localTask.id)) continue;
       let target = merged.tasks.find((task) => task.id === localTask.id);
       if (!target) {
         target = merged.tasks.find((task) => task.title === localTask.title
@@ -154,6 +162,14 @@
       }
       target.days = { ...(localTask.days || {}), ...(target.days || {}) };
       target.notes = { ...(localTask.notes || {}), ...(target.notes || {}) };
+    }
+    if (!merged.tasks.length) {
+      const fallback = [...(remote.tasks || []), ...(local.tasks || [])].find((task) => task && typeof task.id === 'string');
+      if (fallback) {
+        deletedIds.delete(fallback.id);
+        merged.deletedTaskIds = [...deletedIds];
+        merged.tasks = [JSON.parse(JSON.stringify(fallback))];
+      }
     }
     if (!merged.tasks.some((task) => task.id === merged.activeId)) {
       merged.activeId = merged.tasks[0]?.id;
