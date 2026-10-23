@@ -2,20 +2,46 @@
   const STORAGE_KEY = 'evening-agreement-v4';
   const BACKUP_PREFIX = `${STORAGE_KEY}-before-cloud-`;
   const TABLE = 'user_checkin_data';
-  const accountCard = document.querySelector('.account-card');
+  const accountDialog = document.querySelector('#account-dialog');
+  const accountOpenButton = document.querySelector('#open-account');
   const statusElement = document.querySelector('#cloud-status');
   const messageElement = document.querySelector('#cloud-message');
   const form = document.querySelector('#cloud-auth-form');
   const emailInput = document.querySelector('#cloud-email');
   const passwordInput = document.querySelector('#cloud-password');
-  const loginButton = document.querySelector('#cloud-login');
-  const registerButton = document.querySelector('#cloud-register');
+  const submitButton = document.querySelector('#cloud-submit');
+  const loginModeButton = document.querySelector('#select-login');
+  const registerModeButton = document.querySelector('#select-register');
+  const modeSwitch = document.querySelector('.account-mode-switch');
+  const resendButton = document.querySelector('#resend-confirmation');
   const signoutButton = document.querySelector('#cloud-signout');
+  const closeButton = document.querySelector('#close-account');
+  let authMode = 'login';
+  let pendingConfirmationEmail = '';
+  let resendCooldownTimer = null;
+
+  function setAuthMode(mode) {
+    authMode = mode;
+    const registering = mode === 'register';
+    loginModeButton.setAttribute('aria-pressed', String(!registering));
+    registerModeButton.setAttribute('aria-pressed', String(registering));
+    submitButton.textContent = registering ? '创建账号' : '登录并同步';
+    passwordInput.autocomplete = registering ? 'new-password' : 'current-password';
+    setMessage('');
+  }
+
+  accountOpenButton.addEventListener('click', () => accountDialog.showModal());
+  closeButton.addEventListener('click', () => accountDialog.close());
+  loginModeButton.addEventListener('click', () => setAuthMode('login'));
+  registerModeButton.addEventListener('click', () => setAuthMode('register'));
 
   const config = window.CHECKIN_SUPABASE_CONFIG;
   if (!config?.url || !config?.publishableKey || !window.supabase?.createClient) {
     statusElement.textContent = '云端服务暂不可用，仍可在此设备使用';
     statusElement.dataset.state = 'error';
+    form.hidden = true;
+    modeSwitch.hidden = true;
+    messageElement.textContent = 'Supabase 配置或连接不可用。';
     return;
   }
 
@@ -34,10 +60,31 @@
     messageElement.dataset.state = isError ? 'error' : '';
   }
 
+  function startResendCooldown(seconds = 60) {
+    window.clearInterval(resendCooldownTimer);
+    const originalLabel = '重发邮箱确认邮件';
+    let remaining = seconds;
+    resendButton.disabled = true;
+    resendButton.textContent = `稍后可重发（${remaining} 秒）`;
+    resendCooldownTimer = window.setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        window.clearInterval(resendCooldownTimer);
+        resendButton.disabled = false;
+        resendButton.textContent = originalLabel;
+        return;
+      }
+      resendButton.textContent = `稍后可重发（${remaining} 秒）`;
+    }, 1000);
+  }
+
   function showSession(session) {
     const signedIn = Boolean(session?.user);
-    accountCard.dataset.authenticated = String(signedIn);
+    form.hidden = signedIn;
+    modeSwitch.hidden = signedIn;
     signoutButton.hidden = !signedIn;
+    accountOpenButton.textContent = signedIn ? '账号' : '登录';
+    resendButton.hidden = signedIn || !pendingConfirmationEmail;
     if (signedIn) {
       emailInput.value = session.user.email || '';
       passwordInput.value = '';
@@ -83,9 +130,17 @@
     if (error?.code === '42P01' || text.includes(TABLE)) {
       return 'Supabase 数据表尚未创建。请先在 SQL Editor 执行项目里的 supabase/setup.sql。';
     }
-    if (text.includes('invalid login credentials')) return '邮箱或密码不正确。';
-    if (text.includes('email not confirmed')) return '邮箱尚未验证，请先查看注册确认邮件。';
-    if (text.includes('rate limit')) return '操作过于频繁，请稍等片刻再试。';
+    if (error?.code === 'email_not_confirmed' || text.includes('email not confirmed')) {
+      pendingConfirmationEmail = emailInput.value.trim();
+      resendButton.hidden = !pendingConfirmationEmail;
+      return '邮箱尚未验证。请先点击确认邮件中的链接；如果没收到，可以重发确认邮件。';
+    }
+    if (error?.code === 'invalid_credentials' || text.includes('invalid login credentials')) {
+      return '邮箱或密码不匹配。如果刚注册，请先完成邮箱验证；重复注册同一邮箱不会重置密码。';
+    }
+    if (error?.code === 'over_email_send_rate_limit' || text.includes('rate limit') || text.includes('too many requests')) {
+      return '确认邮件发送过于频繁。请稍等一段时间，并检查收件箱和垃圾邮件。';
+    }
     return error?.message || '云端操作失败，请检查网络和 Supabase 设置。';
   }
 
@@ -107,7 +162,7 @@
     if (!nextUser) {
       user = null;
       readyForSync = false;
-      accountCard.dataset.authenticated = 'false';
+      showSession(null);
       setStatus(navigator.onLine ? '已退出登录，记录保留在此设备' : '离线状态，记录保留在此设备');
       return;
     }
@@ -212,12 +267,13 @@
       return;
     }
     setMessage('正在登录…');
-    loginButton.disabled = true;
-    registerButton.disabled = true;
+    submitButton.disabled = true;
     const { error } = await client.auth.signInWithPassword({ email, password });
-    loginButton.disabled = false;
-    registerButton.disabled = false;
-    if (error) setMessage(explainError(error), true);
+    submitButton.disabled = false;
+    if (error) {
+      setMessage(explainError(error), true);
+      resendButton.hidden = !pendingConfirmationEmail;
+    }
   }
 
   async function handleRegister() {
@@ -228,28 +284,65 @@
       return;
     }
     setMessage('正在创建账号…');
-    loginButton.disabled = true;
-    registerButton.disabled = true;
+    submitButton.disabled = true;
     const redirectTo = `${location.origin}${location.pathname}`;
     const { data, error } = await client.auth.signUp({
       email,
       password,
       options: { emailRedirectTo: redirectTo },
     });
-    loginButton.disabled = false;
-    registerButton.disabled = false;
+    submitButton.disabled = false;
     if (error) {
       setMessage(explainError(error), true);
+      if (error.code === 'over_email_send_rate_limit') {
+        pendingConfirmationEmail = email;
+        resendButton.hidden = false;
+        startResendCooldown();
+      }
     } else if (!data.session) {
-      setMessage('账号已创建。请打开注册确认邮件，再回到此页面登录。');
+      pendingConfirmationEmail = email;
+      resendButton.hidden = false;
+      setAuthMode('login');
+      passwordInput.value = '';
+      startResendCooldown();
+      if (data.user?.identities?.length === 0) {
+        setMessage('这个邮箱可能已经注册。请切换到“登录”；如果邮箱还没验证，可重发确认邮件。');
+      } else {
+        setMessage('请检查邮箱和垃圾邮件中的确认链接。验证完成后再回来登录；若没收到，可重发确认邮件。');
+      }
     } else {
       setMessage('账号创建成功，正在准备首次同步…');
     }
   }
 
-  form.addEventListener('submit', (event) => event.preventDefault());
-  loginButton.addEventListener('click', handleLogin);
-  registerButton.addEventListener('click', handleRegister);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (authMode === 'register') await handleRegister();
+    else await handleLogin();
+  });
+  resendButton.addEventListener('click', async () => {
+    const email = pendingConfirmationEmail || emailInput.value.trim();
+    if (!email) {
+      setMessage('请先输入注册时使用的邮箱。', true);
+      return;
+    }
+    resendButton.disabled = true;
+    setMessage('正在发送确认邮件…');
+    const redirectTo = `${location.origin}${location.pathname}`;
+    const { error } = await client.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: redirectTo },
+    });
+    resendButton.disabled = false;
+    if (error) {
+      setMessage(explainError(error), true);
+      if (error.code === 'over_email_send_rate_limit') startResendCooldown();
+    } else {
+      setMessage('如果此邮箱需要验证，Supabase 已尝试发送确认邮件。请检查收件箱和垃圾邮件。');
+      startResendCooldown();
+    }
+  });
   signoutButton.addEventListener('click', async () => {
     setMessage('正在退出登录…');
     const { error } = await client.auth.signOut();
