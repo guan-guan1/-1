@@ -152,10 +152,15 @@
       <form class="account-form" id="cloud-auth-form">
         <label for="cloud-email">邮箱</label>
         <input id="cloud-email" type="email" autocomplete="email" required placeholder="you@example.com" />
-        <label for="cloud-password">密码</label>
+        <label id="cloud-password-label" for="cloud-password">密码</label>
         <input id="cloud-password" type="password" autocomplete="current-password" minlength="8" required placeholder="至少 8 位" />
+        <div class="account-confirm-password" id="account-confirm-password" hidden>
+          <label for="cloud-password-confirm">确认新密码</label>
+          <input id="cloud-password-confirm" type="password" autocomplete="new-password" minlength="8" placeholder="再次输入新密码" />
+        </div>
         <button class="account-submit" id="cloud-submit" type="submit">登录并同步</button>
       </form>
+      <button class="forgot-password-button" id="forgot-password" type="button">忘记密码？</button>
       <button class="resend-confirmation" id="resend-confirmation" type="button" hidden>重发邮箱确认邮件</button>
       <button class="account-signout" id="cloud-signout" type="button" hidden>退出登录</button>
       <p class="account-message" id="cloud-message" aria-live="polite"></p>

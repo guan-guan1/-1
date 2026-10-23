@@ -58,6 +58,9 @@ button:disabled { cursor: not-allowed; }
 .account-form label { color: #65736b; font-size: 10px; font-weight: 650; }
 .account-form input { width: 100%; min-height: 39px; padding: 0 11px; border: 1px solid #dfe4dc; border-radius: 11px; outline: none; background: #fbfbf7; color: var(--ink); font: inherit; font-size: 12px; }
 .account-form input:focus { border-color: #7ca58b; box-shadow: 0 0 0 3px rgba(91, 145, 109, .12); }
+.account-confirm-password { display: grid; gap: 7px; }
+.forgot-password-button { display: block; margin: 10px 0 0 auto; padding: 5px 0; border: 0; background: transparent; color: #53745d; font-size: 11px; font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
+.forgot-password-button:active { opacity: .7; }
 .account-submit, .resend-confirmation, .account-signout { min-height: 40px; padding: 0 12px; border: 1px solid #dfe7dd; border-radius: 11px; background: #eef5ed; color: #397255; font-size: 12px; font-weight: 700; transition: transform .14s ease, filter .14s ease; }
 .account-submit { margin-top: 5px; }
 .account-submit:active:not(:disabled), .resend-confirmation:active:not(:disabled), .account-signout:active:not(:disabled) { transform: scale(.98); filter: brightness(.96); }
@@ -67,7 +70,7 @@ button:disabled { cursor: not-allowed; }
 .account-message { min-height: 0; margin: 7px 0 0; color: #89958d; font-size: 10px; line-height: 1.45; }
 .account-message[data-state='error'] { color: #a94e42; }
 .account-message:empty { display: none; }
-.account-mode-switch[hidden], .account-form[hidden], .resend-confirmation[hidden], .account-signout[hidden] { display: none; }
+.account-mode-switch[hidden], .account-form[hidden], .account-confirm-password[hidden], .forgot-password-button[hidden], .resend-confirmation[hidden], .account-signout[hidden] { display: none; }
 .task-switcher { display: flex; align-items: center; gap: 8px; margin: -9px 1px 15px; }
 .task-tabs { display: flex; flex: 1; gap: 7px; overflow-x: auto; padding: 2px 2px 5px; scrollbar-width: none; }
 .task-tabs::-webkit-scrollbar { display: none; }

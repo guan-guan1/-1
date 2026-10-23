@@ -9,25 +9,56 @@
   const form = document.querySelector('#cloud-auth-form');
   const emailInput = document.querySelector('#cloud-email');
   const passwordInput = document.querySelector('#cloud-password');
+  const passwordLabel = document.querySelector('#cloud-password-label');
+  const confirmPasswordField = document.querySelector('#account-confirm-password');
+  const confirmPasswordInput = document.querySelector('#cloud-password-confirm');
   const submitButton = document.querySelector('#cloud-submit');
   const loginModeButton = document.querySelector('#select-login');
   const registerModeButton = document.querySelector('#select-register');
   const modeSwitch = document.querySelector('.account-mode-switch');
   const resendButton = document.querySelector('#resend-confirmation');
+  const forgotPasswordButton = document.querySelector('#forgot-password');
   const signoutButton = document.querySelector('#cloud-signout');
   const closeButton = document.querySelector('#close-account');
   let authMode = 'login';
+  let recoveryMode = false;
   let pendingConfirmationEmail = '';
   let resendCooldownTimer = null;
+  let forgotCooldownTimer = null;
 
   function setAuthMode(mode) {
     authMode = mode;
+    recoveryMode = false;
     const registering = mode === 'register';
     loginModeButton.setAttribute('aria-pressed', String(!registering));
     registerModeButton.setAttribute('aria-pressed', String(registering));
     submitButton.textContent = registering ? '创建账号' : '登录并同步';
+    passwordLabel.textContent = '密码';
     passwordInput.autocomplete = registering ? 'new-password' : 'current-password';
+    passwordInput.placeholder = registering ? '至少 8 位' : '请输入密码';
+    passwordInput.readOnly = false;
+    confirmPasswordField.hidden = true;
+    confirmPasswordInput.required = false;
+    confirmPasswordInput.value = '';
+    forgotPasswordButton.hidden = registering;
+    modeSwitch.hidden = false;
     setMessage('');
+  }
+
+  function setRecoveryMode() {
+    authMode = 'recovery';
+    recoveryMode = true;
+    modeSwitch.hidden = true;
+    passwordLabel.textContent = '新密码';
+    passwordInput.autocomplete = 'new-password';
+    passwordInput.placeholder = '至少 8 位';
+    passwordInput.readOnly = false;
+    confirmPasswordField.hidden = false;
+    confirmPasswordInput.required = true;
+    confirmPasswordInput.value = '';
+    forgotPasswordButton.hidden = true;
+    resendButton.hidden = true;
+    submitButton.textContent = '保存新密码';
   }
 
   accountOpenButton.addEventListener('click', () => accountDialog.showModal());
@@ -41,6 +72,7 @@
     statusElement.dataset.state = 'error';
     form.hidden = true;
     modeSwitch.hidden = true;
+    forgotPasswordButton.hidden = true;
     messageElement.textContent = 'Supabase 配置或连接不可用。';
     return;
   }
@@ -80,14 +112,18 @@
 
   function showSession(session) {
     const signedIn = Boolean(session?.user);
-    form.hidden = signedIn;
-    modeSwitch.hidden = signedIn;
-    signoutButton.hidden = !signedIn;
+    form.hidden = signedIn && !recoveryMode;
+    modeSwitch.hidden = signedIn || recoveryMode;
+    signoutButton.hidden = !signedIn || recoveryMode;
     accountOpenButton.textContent = signedIn ? '账号' : '登录';
-    resendButton.hidden = signedIn || !pendingConfirmationEmail;
+    resendButton.hidden = signedIn || recoveryMode || !pendingConfirmationEmail;
+    if (signedIn && recoveryMode) {
+      emailInput.value = session.user.email || emailInput.value;
+      emailInput.readOnly = true;
+    }
     if (signedIn) {
       emailInput.value = session.user.email || '';
-      passwordInput.value = '';
+      if (!recoveryMode) passwordInput.value = '';
     }
   }
 
@@ -139,7 +175,10 @@
       return '邮箱或密码不匹配。如果刚注册，请先完成邮箱验证；重复注册同一邮箱不会重置密码。';
     }
     if (error?.code === 'over_email_send_rate_limit' || text.includes('rate limit') || text.includes('too many requests')) {
-      return '确认邮件发送过于频繁。请稍等一段时间，并检查收件箱和垃圾邮件。';
+      return 'Supabase 邮件发送过于频繁。请稍等一段时间，并检查收件箱和垃圾邮件。';
+    }
+    if (text.includes('failed to fetch') || text.includes('fetch failed') || text.includes('networkerror')) {
+      return '无法连接 Supabase。请切换 Wi‑Fi/手机流量后重试；若仍失败，请检查 Supabase Auth 服务和手机网络。';
     }
     return error?.message || '云端操作失败，请检查网络和 Supabase 设置。';
   }
@@ -268,11 +307,16 @@
     }
     setMessage('正在登录…');
     submitButton.disabled = true;
-    const { error } = await client.auth.signInWithPassword({ email, password });
-    submitButton.disabled = false;
-    if (error) {
+    try {
+      const { error } = await client.auth.signInWithPassword({ email, password });
+      if (error) {
+        setMessage(explainError(error), true);
+        resendButton.hidden = !pendingConfirmationEmail;
+      }
+    } catch (error) {
       setMessage(explainError(error), true);
-      resendButton.hidden = !pendingConfirmationEmail;
+    } finally {
+      submitButton.disabled = false;
     }
   }
 
@@ -285,12 +329,20 @@
     }
     setMessage('正在创建账号…');
     submitButton.disabled = true;
-    const redirectTo = `${location.origin}${location.pathname}`;
-    const { data, error } = await client.auth.signUp({
-      email,
-      password,
-      options: { emailRedirectTo: redirectTo },
-    });
+    let data;
+    let error;
+    try {
+      const redirectTo = `${location.origin}${location.pathname}`;
+      ({ data, error } = await client.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: redirectTo },
+      }));
+    } catch (requestError) {
+      setMessage(explainError(requestError), true);
+      submitButton.disabled = false;
+      return;
+    }
     submitButton.disabled = false;
     if (error) {
       setMessage(explainError(error), true);
@@ -315,11 +367,82 @@
     }
   }
 
+  async function handlePasswordRecovery() {
+    const password = passwordInput.value;
+    const confirmation = confirmPasswordInput.value;
+    if (password.length < 8) {
+      setMessage('新密码至少需要 8 位。', true);
+      return;
+    }
+    if (password !== confirmation) {
+      setMessage('两次输入的新密码不一致。', true);
+      return;
+    }
+    submitButton.disabled = true;
+    setMessage('正在更新密码…');
+    try {
+      const { data, error } = await client.auth.updateUser({ password });
+      if (error) {
+        setMessage(explainError(error), true);
+        return;
+      }
+      recoveryMode = false;
+      setAuthMode('login');
+      passwordInput.value = '';
+      confirmPasswordInput.value = '';
+      accountDialog.close();
+      showSession({ user: data.user });
+      setMessage('密码已更新，正在同步账号记录…');
+      await prepareAccountSync(data.user);
+    } catch (error) {
+      setMessage(explainError(error), true);
+    } finally {
+      submitButton.disabled = false;
+    }
+  }
+
+  async function requestPasswordRecovery() {
+    const email = emailInput.value.trim();
+    if (!email || !emailInput.checkValidity()) {
+      setMessage('请先输入有效的邮箱地址。', true);
+      emailInput.focus();
+      return;
+    }
+    forgotPasswordButton.disabled = true;
+    setMessage('正在发送密码恢复邮件…');
+    try {
+      const redirectTo = `${location.origin}${location.pathname}`;
+      const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) {
+        setMessage(explainError(error), true);
+      } else {
+        setMessage('如果该邮箱可以恢复密码，Supabase 已尝试发送邮件。请检查收件箱和垃圾邮件。');
+      }
+    } catch (error) {
+      setMessage(explainError(error), true);
+    } finally {
+      let remaining = 60;
+      forgotPasswordButton.textContent = `稍后可重试（${remaining} 秒）`;
+      forgotCooldownTimer = window.setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          window.clearInterval(forgotCooldownTimer);
+          forgotPasswordButton.disabled = false;
+          forgotPasswordButton.textContent = '忘记密码？';
+        } else {
+          forgotPasswordButton.textContent = `稍后可重试（${remaining} 秒）`;
+        }
+      }, 1000);
+    }
+  }
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (authMode === 'register') await handleRegister();
+    else if (authMode === 'recovery') await handlePasswordRecovery();
     else await handleLogin();
   });
+  forgotPasswordButton.addEventListener('click', requestPasswordRecovery);
   resendButton.addEventListener('click', async () => {
     const email = pendingConfirmationEmail || emailInput.value.trim();
     if (!email) {
@@ -361,7 +484,14 @@
     if (!document.hidden) refreshCloudSnapshot();
   });
 
-  client.auth.onAuthStateChange((_event, session) => {
+  client.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') {
+      setRecoveryMode();
+      showSession(session);
+      if (!accountDialog.open) accountDialog.showModal();
+      setMessage('请输入并确认新密码。');
+      return;
+    }
     showSession(session);
     window.setTimeout(() => prepareAccountSync(session?.user || null), 0);
   });
