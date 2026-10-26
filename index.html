@@ -24,6 +24,7 @@
         <button class="account-open-button" id="open-account" type="button" aria-haspopup="dialog">登录</button>
         <button class="icon-button" id="edit-plan" type="button" aria-label="编辑约定" title="编辑约定">✎</button>
       </header>
+      <p class="sync-hint" id="sync-hint" role="status" aria-live="polite">本机保存，登录后可跨设备同步</p>
 
       <nav class="task-switcher" aria-label="打卡任务">
         <div class="task-tabs" id="task-tabs" aria-label="切换打卡任务"></div>
@@ -44,6 +45,14 @@
             <p class="status-label" id="status-label">今天的记录</p>
             <p class="status-value" id="status-value">今晚还没打卡</p>
           </div>
+        </div>
+        <div class="streak-card" aria-live="polite">
+          <span class="streak-icon" aria-hidden="true">↗</span>
+          <div class="streak-copy">
+            <strong id="streak-count">0 天</strong>
+            <span id="streak-label">连续成功打卡</span>
+          </div>
+          <span class="streak-hint" id="streak-hint">今日待打卡</span>
         </div>
 
         <div class="action-stack">
@@ -145,6 +154,7 @@
         <button class="month-button" id="close-account" type="button" aria-label="关闭">×</button>
       </div>
       <p class="account-status" id="cloud-status" role="status">未登录，记录保存在此设备</p>
+      <button class="retry-cloud-button" id="retry-cloud" type="button" hidden>立即重试同步</button>
       <div class="account-mode-switch" role="group" aria-label="选择账号操作">
         <button class="account-mode-button" id="select-login" type="button" aria-pressed="true">登录</button>
         <button class="account-mode-button" id="select-register" type="button" aria-pressed="false">注册</button>

@@ -10,6 +10,8 @@ const elements = {
   planTitle: document.querySelector('#plan-title'),
   planSchedule: document.querySelector('#plan-schedule'),
   todayStatus: document.querySelector('#today-status'),
+  streakCount: document.querySelector('#streak-count'),
+  streakHint: document.querySelector('#streak-hint'),
   statusLabel: document.querySelector('#status-label'),
   statusValue: document.querySelector('#status-value'),
   selectedDayHint: document.querySelector('#selected-day-hint'),
@@ -248,6 +250,26 @@ function selectedStatus() {
   return activeTask().days[selectedDate] || 'pending';
 }
 
+function successfulStreak(task, now = new Date()) {
+  let cursor = currentTaskDateKey(task, now);
+  const currentStatus = task.days[cursor] || 'pending';
+  if (currentStatus === 'failure') return { count: 0, todayPending: false };
+
+  const todayPending = currentStatus !== 'success';
+  if (todayPending) {
+    const [year, month, day] = cursor.split('-').map(Number);
+    cursor = localDateKey(new Date(year, month - 1, day - 1));
+  }
+
+  let count = 0;
+  while (task.days[cursor] === 'success') {
+    count += 1;
+    const [year, month, day] = cursor.split('-').map(Number);
+    cursor = localDateKey(new Date(year, month - 1, day - 1));
+  }
+  return { count, todayPending };
+}
+
 function canRecordDate(task, date, now = new Date()) {
   const sessionDate = currentTaskDateKey(task, now);
   const status = task.days[date] || 'pending';
@@ -284,6 +306,13 @@ function renderStatus() {
   const canRecord = canRecordDate(task, selectedDate, now);
   const isFuture = selectedDate > localDateKey(now);
   const isPastLocked = status !== 'pending' && !canRecord;
+  const streak = successfulStreak(task, now);
+  const currentSessionStatus = task.days[sessionDate] || 'pending';
+
+  elements.streakCount.textContent = `${streak.count} 天`;
+  elements.streakHint.textContent = currentSessionStatus === 'failure'
+    ? '本次已中断'
+    : streak.todayPending ? '今日待打卡' : '今天已成功';
 
   elements.statusLabel.textContent = selectedDate === localDateKey(now) ? '今天的记录' : `${dateLabel(selectedDate)}的记录`;
   elements.todayStatus.dataset.state = status;

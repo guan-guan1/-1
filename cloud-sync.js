@@ -1,10 +1,13 @@
 (() => {
   const STORAGE_KEY = 'evening-agreement-v4';
   const BACKUP_PREFIX = `${STORAGE_KEY}-before-cloud-`;
+  const LAST_SYNC_KEY = `${STORAGE_KEY}-last-cloud-sync`;
   const TABLE = 'user_checkin_data';
   const accountDialog = document.querySelector('#account-dialog');
   const accountOpenButton = document.querySelector('#open-account');
   const statusElement = document.querySelector('#cloud-status');
+  const syncHintElement = document.querySelector('#sync-hint');
+  const retryCloudButton = document.querySelector('#retry-cloud');
   const messageElement = document.querySelector('#cloud-message');
   const form = document.querySelector('#cloud-auth-form');
   const emailInput = document.querySelector('#cloud-email');
@@ -70,9 +73,12 @@
   if (!config?.url || !config?.publishableKey || !window.supabase?.createClient) {
     statusElement.textContent = '云端服务暂不可用，仍可在此设备使用';
     statusElement.dataset.state = 'error';
+    syncHintElement.textContent = '本机记录仍可使用 · 云端配置暂不可用';
+    syncHintElement.dataset.state = 'error';
     form.hidden = true;
     modeSwitch.hidden = true;
     forgotPasswordButton.hidden = true;
+    retryCloudButton.hidden = true;
     messageElement.textContent = 'Supabase 配置或连接不可用。';
     return;
   }
@@ -82,10 +88,30 @@
   let readyForSync = false;
   let syncTimer = null;
   let refreshInFlight = false;
+  let prepareInFlight = false;
 
   function setStatus(message, state = '') {
     statusElement.textContent = message;
     statusElement.dataset.state = state;
+    retryCloudButton.hidden = !user;
+    const lastSync = localStorage.getItem(LAST_SYNC_KEY);
+    const lastSyncLabel = lastSync
+      ? new Date(lastSync).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+      : '';
+    if (state === 'error') {
+      const savedLocally = navigator.onLine ? '本机已保存' : '离线 · 本机已保存';
+      syncHintElement.textContent = `${savedLocally} · ${message}${lastSyncLabel ? ` · 最近同步 ${lastSyncLabel}` : ''}`;
+    } else if (state === 'success') {
+      syncHintElement.textContent = `已同步到云端${lastSyncLabel ? ` · 最近同步 ${lastSyncLabel}` : ''}`;
+    } else {
+      syncHintElement.textContent = `${message}${user && lastSyncLabel ? ` · 最近同步 ${lastSyncLabel}` : ''}`;
+    }
+    syncHintElement.dataset.state = state;
+  }
+
+  function markCloudSynced(message) {
+    localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+    setStatus(message, 'success');
   }
 
   function setMessage(message, isError = false) {
@@ -194,24 +220,45 @@
     if (error?.code === 'over_email_send_rate_limit' || text.includes('rate limit') || text.includes('too many requests')) {
       return 'Supabase 邮件发送过于频繁。请稍等一段时间，并检查收件箱和垃圾邮件。';
     }
-    if (text.includes('failed to fetch') || text.includes('fetch failed') || text.includes('networkerror')) {
-      return '无法连接 Supabase。请切换 Wi‑Fi/手机流量后重试；若仍失败，请检查 Supabase Auth 服务和手机网络。';
+    if (isNetworkError(error)) {
+      return '当前网络无法连接 Supabase。打卡记录仍保存在本机；检查网络后请重试登录或同步。';
     }
     return error?.message || '云端操作失败，请检查网络和 Supabase 设置。';
   }
 
+  function isNetworkError(error) {
+    const text = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+    return ['failed to fetch', 'fetch failed', 'networkerror', 'network request failed', 'load failed', 'not fetch', 'err_connection', 'timed out', 'timeout'].some((phrase) => text.includes(phrase));
+  }
+
+  function showRequestError(error) {
+    setMessage(explainError(error), true);
+    if (isNetworkError(error)) {
+      setStatus('云端暂不可达，记录仍保存在本机；网络恢复后请重试登录或同步', 'error');
+    }
+  }
+
   async function writeCloudSnapshot(snapshot) {
     if (!user || !readyForSync || !validSnapshot(snapshot)) return;
+    if (!navigator.onLine) {
+      setStatus('等待网络恢复后同步', 'error');
+      return;
+    }
     setStatus('正在同步到云端…');
-    const { error } = await client.from(TABLE).upsert({
-      user_id: user.id,
-      state: snapshot,
-    }, { onConflict: 'user_id' });
-    if (error) {
+    try {
+      const { error } = await client.from(TABLE).upsert({
+        user_id: user.id,
+        state: snapshot,
+      }, { onConflict: 'user_id' });
+      if (error) {
+        setStatus(explainError(error), 'error');
+        return;
+      }
+    } catch (error) {
       setStatus(explainError(error), 'error');
       return;
     }
-    setStatus(`已同步到云端 · ${user.email || '已登录'}`, 'success');
+    markCloudSynced(`已同步到云端 · ${user.email || '已登录'}`);
   }
 
   async function prepareAccountSync(nextUser) {
@@ -223,21 +270,45 @@
       return;
     }
     if (user?.id === nextUser.id && readyForSync) return;
+    if (prepareInFlight) return;
+    prepareInFlight = true;
+    retryCloudButton.disabled = true;
+    try {
+      await loadAccountSnapshot(nextUser);
+    } catch (error) {
+      setStatus(explainError(error), 'error');
+      setMessage('同步请求未完成；本机记录仍保留，可以检查网络后重试。', true);
+    } finally {
+      prepareInFlight = false;
+      retryCloudButton.disabled = false;
+    }
+  }
+
+  async function loadAccountSnapshot(nextUser) {
     user = nextUser;
     readyForSync = false;
     setStatus('正在读取云端记录…');
     setMessage('');
 
-    const { data: cloudRow, error } = await client.from(TABLE)
-      .select('state')
-      .eq('user_id', user.id)
-      .maybeSingle();
+    let data;
+    let error;
+    try {
+      ({ data, error } = await client.from(TABLE)
+        .select('state')
+        .eq('user_id', user.id)
+        .maybeSingle());
+    } catch (requestError) {
+      error = requestError;
+    }
     if (error) {
       setStatus(explainError(error), 'error');
-      setMessage('本机记录仍可使用；完成 Supabase 数据表配置后即可同步。', true);
+      setMessage(isNetworkError(error)
+        ? '账号已登录，但当前网络无法连接云端。本机记录仍在；网络恢复后点“立即重试同步”。'
+        : '本机记录仍可使用；请检查 Supabase 数据表配置。', true);
       return;
     }
 
+    const cloudRow = data;
     const local = window.getCheckinSnapshot?.();
     if (cloudRow && validSnapshot(cloudRow.state)) {
       const merged = mergeSnapshots(local || { tasks: [] }, cloudRow.state);
@@ -252,7 +323,12 @@
           localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
         }
         if (mergedJson !== stableJson(cloudRow.state)) {
-          const { error: saveError } = await client.from(TABLE).upsert({ user_id: user.id, state: merged }, { onConflict: 'user_id' });
+          let saveError;
+          try {
+            ({ error: saveError } = await client.from(TABLE).upsert({ user_id: user.id, state: merged }, { onConflict: 'user_id' }));
+          } catch (requestError) {
+            saveError = requestError;
+          }
           if (saveError) {
             setStatus(explainError(saveError), 'error');
             return;
@@ -267,7 +343,12 @@
         return;
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(initialState));
-      const { error: saveError } = await client.from(TABLE).upsert({ user_id: user.id, state: initialState }, { onConflict: 'user_id' });
+      let saveError;
+      try {
+        ({ error: saveError } = await client.from(TABLE).upsert({ user_id: user.id, state: initialState }, { onConflict: 'user_id' }));
+      } catch (requestError) {
+        saveError = requestError;
+      }
       if (saveError) {
         setStatus(explainError(saveError), 'error');
         return;
@@ -277,21 +358,28 @@
 
     readyForSync = true;
     showSession({ user });
-    setStatus(`已同步到云端 · ${user.email || '已登录'}`, 'success');
+    markCloudSynced(`已同步到云端 · ${user.email || '已登录'}`);
   }
 
   async function refreshCloudSnapshot() {
     if (!user || !readyForSync || !navigator.onLine || refreshInFlight) return;
     refreshInFlight = true;
     try {
-      const { data: cloudRow, error } = await client.from(TABLE)
-        .select('state')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      let data;
+      let error;
+      try {
+        ({ data, error } = await client.from(TABLE)
+          .select('state')
+          .eq('user_id', user.id)
+          .maybeSingle());
+      } catch (requestError) {
+        error = requestError;
+      }
       if (error) {
         setStatus(explainError(error), 'error');
         return;
       }
+      const cloudRow = data;
       if (!cloudRow || !validSnapshot(cloudRow.state)) {
         await writeCloudSnapshot(window.getCheckinSnapshot?.());
         return;
@@ -305,20 +393,27 @@
           localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
         }
         if (mergedJson !== stableJson(cloudRow.state)) {
-          const { error: saveError } = await client.from(TABLE).upsert({ user_id: user.id, state: merged }, { onConflict: 'user_id' });
+          let saveError;
+          try {
+            ({ error: saveError } = await client.from(TABLE).upsert({ user_id: user.id, state: merged }, { onConflict: 'user_id' }));
+          } catch (requestError) {
+            saveError = requestError;
+          }
           if (saveError) {
             setStatus(explainError(saveError), 'error');
             return;
           }
         }
-        setStatus(`已同步到云端 · ${user.email || '已登录'}`, 'success');
+        markCloudSynced(`已同步到云端 · ${user.email || '已登录'}`);
         return;
       }
       if (mergedJson !== stableJson(cloudRow.state)) {
         await writeCloudSnapshot(merged);
       } else {
-        setStatus(`已同步到云端 · ${user.email || '已登录'}`, 'success');
+        markCloudSynced(`已同步到云端 · ${user.email || '已登录'}`);
       }
+    } catch (error) {
+      setStatus(explainError(error), 'error');
     } finally {
       refreshInFlight = false;
     }
@@ -336,11 +431,11 @@
     try {
       const { error } = await client.auth.signInWithPassword({ email, password });
       if (error) {
-        setMessage(explainError(error), true);
+        showRequestError(error);
         resendButton.hidden = !pendingConfirmationEmail;
       }
     } catch (error) {
-      setMessage(explainError(error), true);
+      showRequestError(error);
     } finally {
       submitButton.disabled = false;
     }
@@ -365,13 +460,13 @@
         options: { emailRedirectTo: redirectTo },
       }));
     } catch (requestError) {
-      setMessage(explainError(requestError), true);
+      showRequestError(requestError);
       submitButton.disabled = false;
       return;
     }
     submitButton.disabled = false;
     if (error) {
-      setMessage(explainError(error), true);
+      showRequestError(error);
       if (error.code === 'over_email_send_rate_limit') {
         pendingConfirmationEmail = email;
         resendButton.hidden = false;
@@ -409,7 +504,7 @@
     try {
       const { data, error } = await client.auth.updateUser({ password });
       if (error) {
-        setMessage(explainError(error), true);
+        showRequestError(error);
         return;
       }
       recoveryMode = false;
@@ -421,7 +516,7 @@
       setMessage('密码已更新，正在同步账号记录…');
       await prepareAccountSync(data.user);
     } catch (error) {
-      setMessage(explainError(error), true);
+      showRequestError(error);
     } finally {
       submitButton.disabled = false;
     }
@@ -440,12 +535,12 @@
       const redirectTo = `${location.origin}${location.pathname}`;
       const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) {
-        setMessage(explainError(error), true);
+        showRequestError(error);
       } else {
         setMessage('如果该邮箱可以恢复密码，Supabase 已尝试发送邮件。请检查收件箱和垃圾邮件。');
       }
     } catch (error) {
-      setMessage(explainError(error), true);
+      showRequestError(error);
     } finally {
       let remaining = 60;
       forgotPasswordButton.textContent = `稍后可重试（${remaining} 秒）`;
@@ -499,15 +594,37 @@
     else setMessage('已退出登录，本机记录仍保留。');
   });
 
+  retryCloudButton.addEventListener('click', async () => {
+    if (!user) return;
+    retryCloudButton.disabled = true;
+    try {
+      if (readyForSync) await refreshCloudSnapshot();
+      else await prepareAccountSync(user);
+    } finally {
+      retryCloudButton.disabled = false;
+    }
+  });
+
+  async function resumeCloudSync() {
+    if (!user || !navigator.onLine) return;
+    if (readyForSync) await refreshCloudSnapshot();
+    else await prepareAccountSync(user);
+  }
+
   window.addEventListener('checkin:state-changed', () => {
     if (!user || !readyForSync) return;
     window.clearTimeout(syncTimer);
     syncTimer = window.setTimeout(() => writeCloudSnapshot(window.getCheckinSnapshot?.()), 500);
   });
-  window.addEventListener('online', refreshCloudSnapshot);
-  window.addEventListener('focus', refreshCloudSnapshot);
+  window.addEventListener('online', resumeCloudSync);
+  window.addEventListener('offline', () => {
+    setStatus(user
+      ? '等待网络恢复后同步'
+      : '登录和云同步需要网络；本机记录仍可使用', 'error');
+  });
+  window.addEventListener('focus', resumeCloudSync);
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) refreshCloudSnapshot();
+    if (!document.hidden) resumeCloudSync();
   });
 
   client.auth.onAuthStateChange((event, session) => {
