@@ -1,27 +1,38 @@
-const CACHE_NAME = 'evening-agreement-v11';
-const APP_FILES = ['./', './index.html', './styles.css', './app.js', './cloud-sync.js', './supabase-config.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
+// 旧站（GitHub Pages）已迁移到 CloudBase 静态托管。
+// 这个 Service Worker 只做两件事：清掉旧的缓存、把已经安装的旧版引导到新地址。
+// 不缓存任何新内容，避免旧域名继续提供过期页面。
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_FILES)));
+const NEW_HOME = 'https://my-daka-d7g92edvi8d023606-1517594422.tcloudbaseapp.com/';
+const OWN_CACHE_PREFIX = 'evening-agreement-';
+
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+    (async () => {
+      // 只清理本应用自己的缓存，避免影响同一域名下的其它站点
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((key) => key.indexOf(OWN_CACHE_PREFIX) === 0).map((key) => caches.delete(key)));
+      await self.clients.claim();
+      const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      await Promise.all(
+        clientList.map((client) => client.navigate(NEW_HOME).catch(() => null))
+      );
+    })()
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  const requestUrl = new URL(event.request.url);
-  if (requestUrl.origin !== self.location.origin || requestUrl.search) return;
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
-      const copy = response.clone();
-      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-      return response;
-    }).catch(() => caches.match('./index.html')))
+    fetch(event.request).catch(
+      () =>
+        new Response(`打卡应用已迁移到新地址：${NEW_HOME}`, {
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+          status: 503,
+        })
+    )
   );
 });

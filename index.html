@@ -4,216 +4,45 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f6f5f0" />
-    <meta name="description" content="创建打卡任务，记录并查看每天的执行情况。" />
-    <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="icon-192.png" />
-    <link rel="stylesheet" href="styles.css" />
-    <title>打卡</title>
+    <meta name="robots" content="noindex" />
+    <title>打卡应用已迁移</title>
+    <meta http-equiv="refresh" content="0; url=https://my-daka-d7g92edvi8d023606-1517594422.tcloudbaseapp.com/" />
+    <script>
+      // 立即跳转；上面的 meta refresh 作为脚本被禁用时的兜底
+      window.location.replace('https://my-daka-d7g92edvi8d023606-1517594422.tcloudbaseapp.com/');
+    </script>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f6f5f0;
+        color: #2c2a26;
+        padding: 24px;
+      }
+      main { max-width: 34rem; line-height: 1.7; }
+      h1 { font-size: 1.2rem; margin: 0 0 0.5rem; }
+      p { margin: 0.5rem 0; }
+      a { color: #1e6b52; word-break: break-all; }
+      .hint { font-size: 0.875rem; opacity: 0.75; }
+    </style>
   </head>
   <body>
-    <main class="app-shell">
-      <header class="topbar">
-        <div class="brand-lockup">
-          <div class="brand-mark" aria-hidden="true">☾</div>
-          <div>
-            <p class="eyebrow">给今晚的自己</p>
-            <h1>打卡</h1>
-          </div>
-        </div>
-        <button class="account-open-button" id="open-account" type="button" aria-haspopup="dialog">登录</button>
-        <button class="icon-button" id="edit-plan" type="button" aria-label="编辑约定" title="编辑约定">✎</button>
-      </header>
-      <p class="sync-hint" id="sync-hint" role="status" aria-live="polite">本机保存，登录后可跨设备同步</p>
-
-      <nav class="task-switcher" aria-label="打卡任务">
-        <div class="task-tabs" id="task-tabs" aria-label="切换打卡任务"></div>
-        <button class="add-task-button" id="add-task" type="button" aria-label="新建打卡任务" title="新建打卡任务">＋</button>
-      </nav>
-
-      <section class="plan-card" aria-labelledby="plan-title">
-        <div class="plan-card-top">
-          <span class="live-pill"><span class="live-dot"></span> 正在进行</span>
-          <span class="plan-schedule" id="plan-schedule"></span>
-        </div>
-        <h2 id="plan-title">晚上不点外卖</h2>
-        <p class="plan-copy">今晚，给自己一个简单的约定。</p>
-
-        <div class="today-status" id="today-status" aria-live="polite">
-          <span class="status-orbit" aria-hidden="true"><span></span></span>
-          <div>
-            <p class="status-label" id="status-label">今天的记录</p>
-            <p class="status-value" id="status-value">今晚还没打卡</p>
-          </div>
-        </div>
-        <div class="streak-card" aria-live="polite">
-          <span class="streak-icon" aria-hidden="true">↗</span>
-          <div class="streak-copy">
-            <strong id="streak-count">0 天</strong>
-            <span id="streak-label">连续成功打卡</span>
-          </div>
-          <span class="streak-hint" id="streak-hint">今日待打卡</span>
-        </div>
-
-        <div class="action-stack">
-          <button class="checkin-button success-button" id="success-button" type="button">
-            <span class="button-icon" aria-hidden="true">✓</span>
-            <span>今晚遵守了，完成打卡</span>
-          </button>
-          <button class="checkin-button fail-button" id="fail-button" type="button">
-            <span class="button-icon" aria-hidden="true">↗</span>
-            <span>嘴馋了，没忍住</span>
-          </button>
-        </div>
-        <p class="selected-day-hint" id="selected-day-hint">记录日期：今天</p>
-        <button class="note-button" id="open-note" type="button">✎ <span>添加备注</span></button>
-        <section class="daily-note" id="daily-note" aria-live="polite" hidden>
-          <p class="daily-note-title" id="daily-note-title"></p>
-          <p class="daily-note-text" id="daily-note-text"></p>
-        </section>
-      </section>
-
-      <section class="calendar-card" aria-labelledby="calendar-title">
-        <div class="calendar-heading">
-          <div>
-            <p class="eyebrow">坚持的每一天</p>
-            <h2 id="calendar-title">打卡日历</h2>
-          </div>
-          <div class="month-controls">
-            <button class="month-button" id="previous-month" type="button" aria-label="上个月">‹</button>
-            <span id="month-label" aria-live="polite"></span>
-            <button class="month-button" id="next-month" type="button" aria-label="下个月">›</button>
-          </div>
-        </div>
-        <div class="weekday-row" aria-hidden="true">
-          <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
-        </div>
-        <div class="calendar-grid" id="calendar-grid" role="grid" aria-label="每日打卡情况"></div>
-        <div class="legend-row">
-          <span><i class="legend-dot success-legend"></i>遵守约定</span>
-          <span><i class="legend-dot fail-legend"></i>没忍住</span>
-          <span><i class="legend-dot pending-legend"></i>未记录</span>
-          <span><i class="legend-dot note-legend"></i>有备注</span>
-        </div>
-      </section>
-
-      <footer class="privacy-note"><span aria-hidden="true">⌂</span> 未登录时记录保存在此设备；登录后会同步到你的云端账号</footer>
+    <main>
+      <h1>打卡应用已迁移到新地址</h1>
+      <p>如果浏览器没有自动跳转，请点这个链接：</p>
+      <p>
+        <a href="https://my-daka-d7g92edvi8d023606-1517594422.tcloudbaseapp.com/"
+          >https://my-daka-d7g92edvi8d023606-1517594422.tcloudbaseapp.com/</a
+        >
+      </p>
+      <p class="hint">
+        旧域名里的打卡数据仍保存在这台浏览器的本地存储中。到新站点后，可以用新站点上的
+        <code>/import.html</code> 导入备份，再登录把记录合并到云端。
+      </p>
     </main>
-
-    <dialog class="confirm-dialog" id="confirm-dialog" aria-labelledby="confirm-title">
-      <div class="dialog-symbol" aria-hidden="true">!</div>
-      <p class="eyebrow">修改打卡结果</p>
-      <h2 id="confirm-title">你真的确定要改吗，你最好真的没点外卖</h2>
-      <p class="dialog-detail" id="confirm-detail">确认后，这一天会改为打卡成功。</p>
-      <div class="dialog-actions">
-        <button class="dialog-cancel" id="cancel-edit" type="button">再想想</button>
-        <button class="dialog-confirm" id="confirm-edit" type="button">确认修改</button>
-      </div>
-    </dialog>
-
-    <dialog class="edit-dialog" id="edit-dialog" aria-labelledby="edit-title">
-      <form method="dialog" id="plan-form">
-        <p class="eyebrow">当前任务</p>
-        <h2 id="edit-title">修改任务名称</h2>
-        <label for="plan-input">主题名称</label>
-        <input id="plan-input" maxlength="36" required autocomplete="off" />
-        <fieldset class="time-range-fields">
-          <legend>每天可打卡时间</legend>
-          <label for="plan-start-time">开始时间</label>
-          <input id="plan-start-time" type="time" required />
-          <label for="plan-end-time">结束时间</label>
-          <input id="plan-end-time" type="time" required />
-          <small>结束时间早于开始时间时，视为跨午夜并计入前一天；00:00 表示午夜结束。</small>
-        </fieldset>
-        <button class="delete-task-button" id="delete-task" type="button">删除此任务</button>
-        <small class="delete-task-note" id="delete-task-note"></small>
-        <div class="dialog-actions">
-          <button class="dialog-cancel" value="cancel" type="submit">取消</button>
-          <button class="dialog-confirm" id="save-plan" value="save" type="submit">保存</button>
-        </div>
-      </form>
-    </dialog>
-
-    <dialog class="confirm-dialog delete-confirm-dialog" id="delete-task-dialog" aria-labelledby="delete-task-title">
-      <div class="dialog-symbol delete-symbol" aria-hidden="true">×</div>
-      <p class="eyebrow">删除打卡任务</p>
-      <h2 id="delete-task-title">确认删除这个任务吗？</h2>
-      <p class="dialog-detail" id="delete-task-detail">该任务及其所有打卡记录都会从这台设备删除，无法恢复。</p>
-      <div class="dialog-actions">
-        <button class="dialog-cancel" id="cancel-delete-task" type="button">取消</button>
-        <button class="dialog-delete-confirm" id="confirm-delete-task" type="button">确认删除</button>
-      </div>
-    </dialog>
-
-    <dialog class="edit-dialog account-dialog" id="account-dialog" aria-labelledby="account-dialog-title">
-      <div class="account-dialog-heading">
-        <div>
-          <p class="eyebrow">跨设备保存</p>
-          <h2 id="account-dialog-title">账号与云端同步</h2>
-        </div>
-        <button class="month-button" id="close-account" type="button" aria-label="关闭">×</button>
-      </div>
-      <p class="account-status" id="cloud-status" role="status">未登录，记录保存在此设备</p>
-      <button class="retry-cloud-button" id="retry-cloud" type="button" hidden>立即重试同步</button>
-      <div class="account-mode-switch" role="group" aria-label="选择账号操作">
-        <button class="account-mode-button" id="select-login" type="button" aria-pressed="true">登录</button>
-        <button class="account-mode-button" id="select-register" type="button" aria-pressed="false">注册</button>
-      </div>
-      <form class="account-form" id="cloud-auth-form">
-        <label for="cloud-email">邮箱</label>
-        <input id="cloud-email" type="email" autocomplete="email" required placeholder="you@example.com" />
-        <label id="cloud-password-label" for="cloud-password">密码</label>
-        <input id="cloud-password" type="password" autocomplete="current-password" minlength="8" required placeholder="至少 8 位" />
-        <div class="account-confirm-password" id="account-confirm-password" hidden>
-          <label for="cloud-password-confirm">确认新密码</label>
-          <input id="cloud-password-confirm" type="password" autocomplete="new-password" minlength="8" placeholder="再次输入新密码" />
-        </div>
-        <button class="account-submit" id="cloud-submit" type="submit">登录并同步</button>
-      </form>
-      <button class="forgot-password-button" id="forgot-password" type="button">忘记密码？</button>
-      <button class="resend-confirmation" id="resend-confirmation" type="button" hidden>重发邮箱确认邮件</button>
-      <button class="account-signout" id="cloud-signout" type="button" hidden>退出登录</button>
-      <p class="account-message" id="cloud-message" aria-live="polite"></p>
-    </dialog>
-
-    <dialog class="edit-dialog note-dialog" id="note-dialog" aria-labelledby="note-dialog-title">
-      <form method="dialog" id="note-form">
-        <p class="eyebrow">当天记录</p>
-        <h2 id="note-dialog-title">添加备注</h2>
-        <label for="note-input">备注内容</label>
-        <textarea id="note-input" maxlength="1000" rows="5" placeholder="写下这一天想记录的内容"></textarea>
-        <small class="note-help">备注只保存在这台设备上。清空内容并保存会删除这条备注。</small>
-        <div class="dialog-actions">
-          <button class="dialog-cancel" id="cancel-note" type="button">取消</button>
-          <button class="dialog-confirm" id="save-note" value="save" type="submit">保存备注</button>
-        </div>
-      </form>
-    </dialog>
-
-    <dialog class="edit-dialog" id="new-task-dialog" aria-labelledby="new-task-title">
-      <form method="dialog" id="new-task-form">
-        <p class="eyebrow">添加一项记录</p>
-        <h2 id="new-task-title">新建打卡任务</h2>
-        <label for="new-task-input">任务名称</label>
-        <input id="new-task-input" maxlength="36" required autocomplete="off" placeholder="例如：晚上不点外卖" />
-        <fieldset class="time-range-fields">
-          <legend>每天可打卡时间</legend>
-          <label for="new-task-start-time">开始时间</label>
-          <input id="new-task-start-time" type="time" value="19:00" required />
-          <label for="new-task-end-time">结束时间</label>
-          <input id="new-task-end-time" type="time" value="00:00" required />
-          <small>结束时间早于开始时间时，视为跨午夜并计入前一天；00:00 表示午夜结束。</small>
-        </fieldset>
-        <div class="dialog-actions">
-          <button class="dialog-cancel" id="cancel-new-task" type="button">取消</button>
-          <button class="dialog-confirm" id="create-task" value="create" type="submit">创建任务</button>
-        </div>
-      </form>
-    </dialog>
-
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="supabase-config.js"></script>
-    <script src="app.js" defer></script>
-    <script src="cloud-sync.js" defer></script>
   </body>
 </html>

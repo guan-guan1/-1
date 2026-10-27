@@ -2,6 +2,10 @@
 
 一个手机优先、可离线使用的打卡 MVP。未登录时记录保存在当前浏览器；登录后会将任务、打卡和备注同步到 Supabase 云端。
 
+> **注意：应用已经迁移到 CloudBase 静态网站托管。**
+> 新地址：https://my-daka-d7g92edvi8d023606-1517594422.tcloudbaseapp.com/
+> GitHub Pages 现在只发布一个跳转页（`index.html`）和负责清缓存/跳转的 `service-worker.js`；CloudBase PostgreSQL 版的源码在 `cloudbase-migration` 分支。下面关于 Supabase 的内容是迁移前的历史说明。
+
 ## 功能
 
 - 首页显示当前选中的约束任务，默认是“晚上不点外卖”。
