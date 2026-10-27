@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f6f5f0" />
     <meta name="description" content="创建打卡任务，记录并查看每天的执行情况。" />
-    <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="stylesheet" href="styles.css" />
     <title>打卡</title>
   </head>
@@ -164,6 +164,10 @@
         <input id="cloud-email" type="email" autocomplete="email" required placeholder="you@example.com" />
         <label id="cloud-password-label" for="cloud-password">密码</label>
         <input id="cloud-password" type="password" autocomplete="current-password" minlength="8" required placeholder="至少 8 位" />
+        <div class="account-confirm-password" id="account-code-field" hidden>
+          <label for="cloud-code">邮箱验证码</label>
+          <input id="cloud-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="输入邮件中的验证码" />
+        </div>
         <div class="account-confirm-password" id="account-confirm-password" hidden>
           <label for="cloud-password-confirm">确认新密码</label>
           <input id="cloud-password-confirm" type="password" autocomplete="new-password" minlength="8" placeholder="再次输入新密码" />
@@ -211,9 +215,6 @@
       </form>
     </dialog>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="supabase-config.js"></script>
-    <script src="app.js" defer></script>
-    <script src="cloud-sync.js" defer></script>
+    <script type="module" src="cloudbase-sync.js"></script>
   </body>
 </html>

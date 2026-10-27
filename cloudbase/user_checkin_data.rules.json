@@ -1,0 +1,4 @@
+{
+  "read": "doc.userId == auth.uid",
+  "write": "doc.userId == auth.uid"
+}

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>导入本机备份 · 晚间打卡</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif; margin: 0; padding: 24px; line-height: 1.6; }
+    main { max-width: 640px; margin: 0 auto; }
+    h1 { font-size: 1.25rem; }
+    textarea { width: 100%; min-height: 180px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; padding: 8px; box-sizing: border-box; }
+    button { font-size: 1rem; padding: 10px 16px; border-radius: 8px; border: 1px solid #888; background: transparent; cursor: pointer; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+    .hint { font-size: .875rem; opacity: .8; }
+    #msg { margin-top: 12px; font-weight: 600; }
+    #msg.error { color: #c0392b; }
+    #msg.ok { color: #1e8449; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>导入本机备份（换域名后找回打卡记录）</h1>
+    <p class="hint">
+      用途：旧站点（GitHub Pages / 旧 Supabase 版本）里的打卡数据存在<b>那个域名的 localStorage</b> 里，
+      换到新域名后浏览器不会带过来。把旧站点导出的备份文本粘贴到下面，点“写入并打开应用”，
+      记录就写进新域名的本机存储；随后在应用里登录，首次登录会把本机记录合并到云端。
+    </p>
+    <p class="hint">备份键名：<code>evening-agreement-v4</code>。只接受含 <code>tasks</code> 数组的 JSON。</p>
+    <textarea id="payload" placeholder='把备份 JSON 粘贴到这里，例如 {"tasks":[...],"activeId":"...","deletedTaskIds":[]}'></textarea>
+    <div class="row">
+      <button id="import" type="button">写入并打开应用</button>
+      <button id="check" type="button">只检查格式</button>
+    </div>
+    <p id="msg" role="status"></p>
+  </main>
+  <script>
+    (() => {
+      const STORAGE_KEY = 'evening-agreement-v4';
+      const payload = document.querySelector('#payload');
+      const msg = document.querySelector('#msg');
+
+      function say(text, kind = '') {
+        msg.textContent = text;
+        msg.className = kind;
+      }
+
+      function parse() {
+        const raw = payload.value.trim();
+        if (!raw) {
+          say('请先粘贴备份内容。', 'error');
+          return null;
+        }
+        let value;
+        try {
+          value = JSON.parse(raw);
+        } catch {
+          say('不是合法 JSON，请检查是否完整复制（包括最外层花括号）。', 'error');
+          return null;
+        }
+        if (!value || typeof value !== 'object' || !Array.isArray(value.tasks) || value.tasks.length === 0) {
+          say('JSON 里缺少非空的 tasks 数组，看起来不是本应用的备份。', 'error');
+          return null;
+        }
+        return value;
+      }
+
+      document.querySelector('#check').addEventListener('click', () => {
+        const value = parse();
+        if (!value) return;
+        const days = value.tasks.reduce((sum, task) => sum + Object.keys(task.days || {}).length, 0);
+        say(`格式正确：${value.tasks.length} 个计划，${days} 条打卡记录。`, 'ok');
+      });
+
+      document.querySelector('#import').addEventListener('click', () => {
+        const value = parse();
+        if (!value) return;
+        const existing = localStorage.getItem(STORAGE_KEY);
+        if (existing && !window.confirm('本域名下已有打卡记录，继续会覆盖它（云端不受影响）。确定继续？')) return;
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+        } catch {
+          say('写入失败：浏览器存储空间不足或被禁用。', 'error');
+          return;
+        }
+        say('已写入本机存储，正在打开应用…', 'ok');
+        window.location.href = './';
+      });
+    })();
+  </script>
+</body>
+</html>
